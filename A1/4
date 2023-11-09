@@ -1,0 +1,87 @@
+
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from informer.models import Informer
+from informer.utils import create_exponential_decay_lr_scheduler
+
+# Load the weather data
+forcasting_data = pd.read_csv('weather.csv')
+
+# Preprocess the data
+scaler = StandardScaler()
+forcasting_data_scaled = scaler.fit_transform(forcasting_data)
+
+# Split the data into features (X) and target (y)
+X = forcasting_data_scaled[:, :-1]
+y = forcasting_data_scaled[:, -1]
+
+# Split the data into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Create the Probsparse Informer model
+probsparse_informer = Informer(
+    enc_in_channels=X_train.shape[1],
+    dec_in_channels=y_train.shape[1],
+    c=8,
+    d=64,
+    kernel_size=(1, 1),
+    dropout=0.1,
+    attention_type='probsparse'
+)
+
+# Create the Canonical Informer model
+canonical_informer = Informer(
+    enc_in_channels=X_train.shape[1],
+    dec_in_channels=y_train.shape[1],
+    c=8,
+    d=64,
+    kernel_size=(1, 1),
+    dropout=0.1,
+    attention_type='canonical'
+)
+
+# Train the Probsparse Informer model
+probsparse_informer_lr_scheduler = create_exponential_decay_lr_scheduler(
+    probsparse_informer.optimizer,
+    start_lr=0.001,
+    end_lr=0.0001,
+    total_epochs=100
+)
+
+probsparse_informer.fit(
+    X_train,
+    y_train,
+    lr_scheduler=probsparse_informer_lr_scheduler,
+    num_epochs=100,
+    validation_split=0.2
+)
+
+# Train the Canonical Informer model
+canonical_informer_lr_scheduler = create_exponential_decay_lr_scheduler(
+    canonical_informer.optimizer,
+    start_lr=0.001,
+    end_lr=0.0001,
+    total_epochs=100
+)
+
+canonical_informer.fit(
+    X_train,
+    y_train,
+    lr_scheduler=canonical_informer_lr_scheduler,
+    num_epochs=100,
+    validation_split=0.2
+)
+
+# Evaluate the Probsparse Informer model on the test set
+probsparse_informer_pred = probsparse_informer.predict(X_test)
+probsparse_informer_rmse = np.sqrt(np.mean((probsparse_informer_pred - y_test)**2))
+
+# Evaluate the Canonical Informer model on the test set
+canonical_informer_pred = canonical_informer.predict(X_test)
+canonical_informer_rmse = np.sqrt(np.mean((canonical_informer_pred - y_test)**2))
+
+# Print the results
+print('Probsparse Informer RMSE:', probsparse_informer_rmse)
+print('Canonical Informer RMSE:', canonical_informer_rmse)
